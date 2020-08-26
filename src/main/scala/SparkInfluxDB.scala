@@ -34,7 +34,7 @@ object SparkInfluxDB {
     Logger.getRootLogger.setLevel(Level.ERROR)
 
     var sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
-    var influxdb = InfluxDBFactory.connect("http://localhost:8086").setDatabase("livingwallet")
+    var influxdb = InfluxDBFactory.connect("http://localhost:8087").setDatabase("livingwallet")
 
     val queryBuy = new Query("SELECT short_name, number_units, pricing FROM currency_asset_transactions WHERE time <= now() AND transaction_type='BUY'")
     val responseBuy = influxdb.query(queryBuy)
@@ -97,7 +97,7 @@ object SparkInfluxDB {
     val pricingRowNum = resultPricing.withColumn("row_number", row_number.over(windowSpec))
     val pricingFinal = pricingRowNum.withColumn("qty_balance", when(col("row_number") === 1, col("qty_remainder")).otherwise(col("qty")))
     val pricingFinalValue = pricingFinal.withColumn("value_balance",expr("qty_balance * pricing"))
-    val pricingAggrValue = pricingFinalValue.groupBy("currency").sum("value_balance").alias("value_balance")
+    val pricingAggrValue = pricingFinalValue.groupBy("currency").sum("qty_balance","value_balance")
     pricingAggrValue.show()
 
     //write Points to influxdb
@@ -113,7 +113,8 @@ object SparkInfluxDB {
       var point = Point.measurement("currency_balance")
         .time(System.currentTimeMillis(), TimeUnit.MILLISECONDS)
         .tag("currency", row.get(0).asInstanceOf[String])
-        .addField("value_balance", row.get(1).asInstanceOf[java.lang.Double])
+        .addField("qty_balance",row.get(1).asInstanceOf[java.lang.Double])
+        .addField("value_balance", row.get(2).asInstanceOf[java.lang.Double])
         .build()
 
       batchPoints.point(point)
